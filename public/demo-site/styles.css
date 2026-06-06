@@ -1,15 +1,14 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --bg: #08111f;
-  --bg-soft: rgba(15, 24, 43, 0.78);
-  --line: rgba(189, 199, 221, 0.16);
-  --text: #edf2ff;
-  --muted: #a6b4cf;
-  --accent: #74d7ff;
-  --accent-2: #b68cff;
-  --shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+  font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --bg: #0d0905;
+  --bg-soft: rgba(31, 22, 13, 0.82);
+  --line: rgba(255, 180, 80, 0.12);
+  --text: #f5ede0;
+  --muted: #9e8a72;
+  --accent: #f97316;
+  --accent-2: #f5c06e;
+  --shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -23,16 +22,9 @@ body {
 }
 
 body {
-  background: radial-gradient(
-      circle at top left,
-      rgba(116, 215, 255, 0.15),
-      transparent 30%
-    ),
-    radial-gradient(
-      circle at 80% 0%,
-      rgba(182, 140, 255, 0.16),
-      transparent 24%
-    ), linear-gradient(180deg, #07101c 0%, var(--bg) 100%);
+  background:
+    radial-gradient(ellipse at 30% 0%, rgba(249, 115, 22, 0.10), transparent 45%),
+    linear-gradient(180deg, #110c07 0%, var(--bg) 100%);
   color: var(--text);
 }
 
@@ -53,7 +45,6 @@ a {
 .stats article {
   border: 1px solid var(--line);
   background: var(--bg-soft);
-  backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
 }
 
@@ -180,8 +171,8 @@ h1 {
 .card.accent {
   background: linear-gradient(
       180deg,
-      rgba(116, 215, 255, 0.14),
-      rgba(182, 140, 255, 0.1)
+      rgba(249, 115, 22, 0.14),
+      rgba(245, 192, 110, 0.1)
     ), var(--bg-soft);
 }
 
@@ -211,8 +202,8 @@ h1 {
 }
 
 :root[data-glow="soft"] {
-  --accent: #7cf5c8;
-  --accent-2: #74d7ff;
+  --accent: #fb923c;
+  --accent-2: #f5c06e;
 }
 
 @media (max-width: 840px) {

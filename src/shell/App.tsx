@@ -1,3 +1,4 @@
+import * as preact from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { DEMO_SITE_NPUB } from "../demo/constants";
 import { getPool, getPoolRelayUrls } from "../nostr/pool";
@@ -86,6 +87,7 @@ export function App() {
   const [searchNonce, setSearchNonce] = useState(0);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [themeColor, setThemeColor] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(() => isStandaloneMode());
@@ -268,6 +270,7 @@ export function App() {
   }
 
   function goHome() {
+    setThemeColor(null);
     setSearchQuery(null);
     window.location.hash = "";
   }
@@ -300,13 +303,31 @@ export function App() {
     await prompt.userChoice.catch(() => null);
   }
 
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (
+        typeof event.data === "object" &&
+        event.data !== null &&
+        event.data.type === "aura:theme-color" &&
+        typeof event.data.color === "string"
+      ) {
+        setThemeColor(event.data.color);
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   async function handleBlockPubkey(pubkeyToBlock: string) {
     await publishMuteListEntry(pubkeyToBlock);
   }
 
   return (
     <div class={`aura-shell ${isStandalone ? "aura-shell--standalone" : ""}`}>
-      <header class={`aura-topbar ${isStandalone ? "aura-topbar--app" : ""}`}>
+      <header
+        class={`aura-topbar ${isStandalone ? "aura-topbar--app" : ""}`}
+        style={themeColor ? { "--topbar-accent": themeColor } as preact.JSX.CSSProperties : undefined}
+      >
         <div class="aura-titlebar">
           {!isStandalone ? (
             <div class="aura-brand">
