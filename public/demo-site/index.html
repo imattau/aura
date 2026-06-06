@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Signal Garden</title>
+    <meta
+      name="description"
+      content="A polished example site rendered by Aura's service worker."
+    />
+    <link rel="stylesheet" href="/demo-site/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero">
+        <nav class="site-nav" aria-label="Primary">
+          <a href="index.html" aria-current="page">Home</a>
+          <a href="about.html">About</a>
+          <a href="#notes">Notes</a>
+        </nav>
+        <div class="eyebrow">Aura demo site</div>
+        <h1>Signal Garden</h1>
+        <p class="lede">
+          A small synthetic publication exploring live feeds, soft gradients, and
+          compact editorial layouts. This is a self-contained example website
+          that Aura can render without external infrastructure.
+        </p>
+        <div class="hero-actions">
+          <button id="theme-toggle" type="button">Toggle glow</button>
+          <a href="about.html">Open article</a>
+        </div>
+      </section>
+
+      <section class="stats">
+        <article>
+          <span class="stat-value" data-count="128">0</span>
+          <span class="stat-label">signals curated</span>
+        </article>
+        <article>
+          <span class="stat-value" data-count="24">0</span>
+          <span class="stat-label">hours of calm</span>
+        </article>
+        <article>
+          <span class="stat-value" data-count="7">0</span>
+          <span class="stat-label">ambient modes</span>
+        </article>
+      </section>
+
+      <section class="grid">
+        <article class="card accent">
+          <p class="card-kicker">New issue</p>
+          <h2>Design for distributed trust</h2>
+          <p>
+            Build interfaces that assume the browser is the runtime and the
+            network is a content lookup problem.
+          </p>
+        </article>
+
+        <article class="card">
+          <p class="card-kicker">In focus</p>
+          <h2>One page, many layers</h2>
+          <p>
+            Thin shell, local cache, verified assets, and a site that still feels
+            like a normal website once it loads.
+          </p>
+        </article>
+
+        <article class="card">
+          <p class="card-kicker">Signal note</p>
+          <h2>Local first reading</h2>
+          <p>
+            The content is static, but the presentation reacts to user intent and
+            browser state without any backend round trips.
+          </p>
+        </article>
+      </section>
+
+      <section id="notes" class="notes">
+        <h2>Notes</h2>
+        <ul>
+          <li>Single-file HTML plus companion CSS and JS.</li>
+          <li>No build step, no external fonts, no network dependencies.</li>
+          <li>Useful as a smoke test for the Aura rendering pipeline.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="/demo-site/app.js"></script>
+  </body>
+</html>

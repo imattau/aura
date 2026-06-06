@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Signal Garden - About</title>
+    <meta
+      name="description"
+      content="About page for the Signal Garden demo site rendered by Aura."
+    />
+    <link rel="stylesheet" href="/demo-site/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero hero--compact">
+        <nav class="site-nav" aria-label="Primary">
+          <a href="index.html">Home</a>
+          <a href="about.html" aria-current="page">About</a>
+          <a href="index.html#notes">Notes</a>
+        </nav>
+        <div class="eyebrow">Aura demo site</div>
+        <h1>About the garden</h1>
+        <p class="lede">
+          Signal Garden is a deliberately small editorial site made to prove that
+          Aura can render a normal multi-page website from static assets alone.
+        </p>
+        <div class="hero-actions">
+          <button id="theme-toggle" type="button">Toggle glow</button>
+          <a href="index.html">Back home</a>
+        </div>
+      </section>
+
+      <section class="grid grid--single">
+        <article class="card accent">
+          <p class="card-kicker">Why it exists</p>
+          <h2>Render fidelity</h2>
+          <p>
+            This page exercises navigation, typography, gradients, and local
+            interactions without depending on a build tool or external backend.
+          </p>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="/demo-site/app.js"></script>
+  </body>
+</html>
