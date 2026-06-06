@@ -1,4 +1,4 @@
-import * as preact from "preact";
+import type * as preact from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { DEMO_SITE_NPUB } from "../demo/constants";
 import { getPool, getPoolRelayUrls } from "../nostr/pool";
@@ -107,6 +107,7 @@ export function App() {
         ];
   const activeSiteLabel =
     currentPetname ?? currentNpub ?? (searchQuery ? "Search" : "Aura");
+  const canGoHome = Boolean(activeSite || searchQuery);
 
   useEffect(() => {
     if (document.readyState === "complete") {
@@ -305,11 +306,13 @@ export function App() {
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
       if (
         typeof event.data === "object" &&
         event.data !== null &&
         event.data.type === "aura:theme-color" &&
-        typeof event.data.color === "string"
+        typeof event.data.color === "string" &&
+        /^#[0-9a-fA-F]{3,8}$/.test(event.data.color)
       ) {
         setThemeColor(event.data.color);
       }
@@ -326,7 +329,11 @@ export function App() {
     <div class={`aura-shell ${isStandalone ? "aura-shell--standalone" : ""}`}>
       <header
         class={`aura-topbar ${isStandalone ? "aura-topbar--app" : ""}`}
-        style={themeColor ? { "--topbar-accent": themeColor } as preact.JSX.CSSProperties : undefined}
+        style={
+          themeColor
+            ? ({ "--topbar-accent": themeColor } as preact.JSX.CSSProperties)
+            : undefined
+        }
       >
         <div class="aura-titlebar">
           {!isStandalone ? (
@@ -373,7 +380,7 @@ export function App() {
           <button
             type="button"
             onClick={goHome}
-            disabled={!activeSite}
+            disabled={!canGoHome}
             class="icon-button"
             aria-label="Home"
             title="Home"
