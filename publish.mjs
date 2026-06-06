@@ -18,12 +18,19 @@ const MIME = {
 
 // --- Key resolution ---
 let skBytes;
+const envNsec = process.env.AURA_NSEC;
 const nsecIdx = process.argv.indexOf('--nsec');
-if (nsecIdx !== -1) {
+if (envNsec) {
+  const decoded = nip19.decode(envNsec);
+  if (decoded.type !== 'nsec') throw new Error('Invalid nsec in AURA_NSEC');
+  skBytes = decoded.data;
+  console.log('Using nsec from AURA_NSEC env var (not saved).');
+} else if (nsecIdx !== -1) {
   const nsec = process.argv[nsecIdx + 1];
   const decoded = nip19.decode(nsec);
   if (decoded.type !== 'nsec') throw new Error('Invalid nsec');
   skBytes = decoded.data;
+  console.warn('Warning: --nsec flag exposes your key in /proc/*/cmdline. Prefer AURA_NSEC env var.');
   console.log('Using supplied nsec (not saved).');
 } else if (existsSync(IDENTITY_FILE)) {
   const { skHex } = JSON.parse(readFileSync(IDENTITY_FILE, 'utf8'));
@@ -32,7 +39,7 @@ if (nsecIdx !== -1) {
 } else {
   skBytes = generateSecretKey();
   const skHex = Buffer.from(skBytes).toString('hex');
-  writeFileSync(IDENTITY_FILE, JSON.stringify({ skHex }, null, 2));
+  writeFileSync(IDENTITY_FILE, JSON.stringify({ skHex }, null, 2), { mode: 0o600 });
   console.log('Generated new identity, saved to aura-identity.json');
 }
 
@@ -40,15 +47,33 @@ const pubkey = getPublicKey(skBytes);
 console.log('npub:', nip19.npubEncode(pubkey));
 
 // --- Hash files ---
-const filenames = readdirSync(SHOWCASE_DIR);
+const dirents = readdirSync(SHOWCASE_DIR, { withFileTypes: true });
 const files = {};
 const fileData = {};
-for (const name of filenames) {
-  const path = join(SHOWCASE_DIR, name);
+for (const dirent of dirents) {
+  if (!dirent.isFile()) continue; // skip symlinks, directories, etc.
+  const ext = extname(dirent.name);
+  if (!MIME[ext]) continue; // only allow known safe extensions
+  const path = join(SHOWCASE_DIR, dirent.name);
   const bytes = readFileSync(path);
   const hash = createHash('sha256').update(bytes).digest('hex');
-  files[`/${name}`] = hash;
-  fileData[`/${name}`] = { bytes, hash, mime: MIME[extname(name)] || 'application/octet-stream' };
+  files[`/${dirent.name}`] = hash;
+  fileData[`/${dirent.name}`] = { bytes, hash, mime: MIME[ext] };
+}
+
+// --- Build Blossom auth event (BUD-02 kind:24242) ---
+function makeBlossomAuth(hash, mime, bytes) {
+  const authEvent = finalizeEvent({
+    kind: 24242,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [
+      ['t', 'upload'],
+      ['x', hash],
+      ['expiration', String(Math.floor(Date.now() / 1000) + 60)],
+    ],
+    content: 'Upload blob',
+  }, skBytes);
+  return 'Nostr ' + Buffer.from(JSON.stringify(authEvent)).toString('base64');
 }
 
 // --- Upload to Blossom ---
@@ -57,12 +82,16 @@ for (const [urlPath, { bytes, hash, mime }] of Object.entries(fileData)) {
   if (headRes.ok) {
     console.log(`✓ already exists  ${urlPath}`);
   } else {
-    const putRes = await fetch(`${BLOSSOM}/${hash}`, {
+    const authHeader = makeBlossomAuth(hash, mime, bytes);
+    const putRes = await fetch(`${BLOSSOM}/upload`, {
       method: 'PUT',
-      headers: { 'Content-Type': mime },
+      headers: { 'Content-Type': mime, 'Authorization': authHeader },
       body: bytes,
     });
-    if (!putRes.ok) throw new Error(`Upload failed for ${urlPath}: ${putRes.status}`);
+    if (!putRes.ok) {
+      const txt = await putRes.text().catch(() => '');
+      throw new Error(`Upload failed for ${urlPath}: ${putRes.status} ${txt}`);
+    }
     console.log(`✓ uploaded        ${urlPath}`);
   }
 }
