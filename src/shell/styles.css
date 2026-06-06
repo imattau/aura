@@ -1,15 +1,15 @@
 :root {
   color-scheme: dark;
-  --bg: #0d0905;
-  --bg-2: #161008;
-  --surface: #1f160d;
-  --surface-2: #261c12;
-  --border: rgba(255, 180, 80, 0.10);
+  --bg: #0c0c0c;
+  --bg-2: #141414;
+  --surface: #1a1a1a;
+  --surface-2: #222222;
+  --border: rgba(255, 180, 80, 0.1);
   --border-strong: rgba(255, 180, 80, 0.22);
 
-  --text: #f5ede0;
-  --muted: #9e8a72;
-  --muted-2: #6b5a44;
+  --text: #f2f2f2;
+  --muted: #8a8a8a;
+  --muted-2: #5a5a5a;
 
   --accent: #f97316;
   --accent-warm: #fb923c;
@@ -17,7 +17,8 @@
   --accent-gold: #f5c06e;
   --danger: #f87171;
 
-  --shadow: 0 24px 72px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 180, 80, 0.04) inset;
+  --shadow: 0 24px 72px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 180, 80, 0.04)
+    inset;
 
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", "Iowan Old Style", Georgia, ui-serif, serif;
@@ -35,10 +36,16 @@ body,
 
 body {
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 30% 0%, rgba(249, 115, 22, 0.12), transparent 50%),
-    radial-gradient(ellipse at 80% 90%, rgba(234, 88, 12, 0.06), transparent 40%),
-    linear-gradient(180deg, #110c07 0%, var(--bg) 60%, var(--bg-2) 100%);
+  background: radial-gradient(
+      ellipse at 30% 0%,
+      rgba(249, 115, 22, 0.12),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 90%,
+      rgba(234, 88, 12, 0.06),
+      transparent 40%
+    ), linear-gradient(180deg, #0f0f0f 0%, var(--bg) 60%, var(--bg-2) 100%);
   color: var(--text);
 }
 
@@ -111,7 +118,7 @@ h3,
   border: 0;
   border-bottom: 1px solid var(--topbar-accent, rgba(249, 115, 22, 0.18));
   border-radius: 0;
-  background: #110c07;
+  background: #0f0f0f;
   box-shadow: 0 1px 0 rgba(249, 115, 22, 0.06);
 }
 
@@ -323,7 +330,7 @@ h3,
   flex: 1;
   min-width: 0;
   border: 1px solid rgba(255, 180, 80, 0.14);
-  background: #1a1108;
+  background: #1a1a1a;
   color: var(--text);
   border-radius: 999px;
   padding: 0.48rem 0.8rem;
@@ -338,7 +345,8 @@ h3,
 .auth-card input:focus-visible {
   outline: none;
   border-color: rgba(249, 115, 22, 0.6);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14), inset 0 1px 2px
+    rgba(0, 0, 0, 0.3);
 }
 
 .address-bar button,
@@ -412,7 +420,7 @@ h3,
   grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
   gap: 1rem;
   border: 1px solid var(--border);
-  background: #1a1108;
+  background: #1a1a1a;
   border-radius: 24px;
   padding: clamp(1.25rem, 3vw, 2rem);
   box-shadow: var(--shadow);
@@ -922,7 +930,8 @@ h3,
   color: var(--text);
   border-color: rgba(249, 115, 22, 0.55);
   background: rgba(249, 115, 22, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(0,0,0,0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 24px
+    rgba(0, 0, 0, 0.22);
 }
 
 .search-result-action:focus-visible {
@@ -955,7 +964,7 @@ h3,
 .auth-card {
   width: min(100%, 34rem);
   border: 1px solid var(--border);
-  background: #1a1108;
+  background: #1a1a1a;
   color: var(--text);
   border-radius: 24px;
   padding: 1.1rem;
@@ -1105,7 +1114,7 @@ h3,
   width: 100%;
   box-sizing: border-box;
   border: 1px solid rgba(255, 180, 80, 0.14);
-  background: #110c07;
+  background: #0f0f0f;
   color: var(--text);
   border-radius: 14px;
   padding: 0.9rem 1rem;
@@ -1126,7 +1135,8 @@ h3,
 .auth-actions button:not(.ghost) {
   background: var(--accent);
   color: white;
-  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.28), inset 0 1px 0 rgba(255,255,255,0.1);
+  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.28), inset 0 1px 0
+    rgba(255, 255, 255, 0.1);
 }
 
 .auth-actions .ghost {
