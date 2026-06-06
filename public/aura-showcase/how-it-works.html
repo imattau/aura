@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>How Aura works</title>
+    <meta name="description" content="Trace an Aura page load from the address bar to the browser response — step by step." />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <nav class="site-nav" aria-label="Primary">
+        <span class="logo">
+          <img src="/icon.svg" alt="" aria-hidden="true" />
+          Aura
+        </span>
+        <a href="index.html">Home</a>
+        <a href="how-it-works.html" aria-current="page">How it works</a>
+      </nav>
+
+      <div class="page-hero">
+        <h1>How a page load works</h1>
+        <p>From the address bar to rendered HTML — no origin server involved.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-badge">1</div>
+          <div class="step-body">
+            <h3>You navigate to a site</h3>
+            <p>The Aura shell receives a navigation to <code>/~npub1…/index.html</code>. The npub in the path identifies the site owner's Nostr public key.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">2</div>
+          <div class="step-body">
+            <h3>Service Worker intercepts</h3>
+            <p>The installed Service Worker catches the <code>FetchEvent</code> before it reaches the network. No request leaves the browser yet.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">3</div>
+          <div class="step-body">
+            <h3>Manifest fetched from relay</h3>
+            <p>The SW opens a WebSocket to one or more Nostr relays and requests the latest <code>kind:15128</code> event authored by the site's pubkey. This event contains the full path→hash map for the site.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">4</div>
+          <div class="step-body">
+            <h3>Path resolved to hash</h3>
+            <p>The SW looks up <code>/index.html</code> in the manifest's <code>files</code> map and retrieves the corresponding SHA-256 hash.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">5</div>
+          <div class="step-body">
+            <h3>Blob fetched from Blossom</h3>
+            <p>The SW fetches the blob from a Blossom server using the hash as the URL path: <code>https://blossom.primal.net/&lt;sha256&gt;</code>. Blossom servers are pure content-addressed storage — any server holding the hash can serve it.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">6</div>
+          <div class="step-body">
+            <h3>Hash verified</h3>
+            <p>Before handing the blob to the browser, the SW computes its SHA-256 and compares it to the hash from the manifest. If they don't match, the blob is discarded and the fetch fails.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-badge">7</div>
+          <div class="step-body">
+            <h3>Response constructed locally</h3>
+            <p>The SW constructs a synthetic <code>Response</code> object with the correct <code>Content-Type</code> header and returns it to the browser. The page renders normally — the browser never knew there was no server.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-diagram" role="img" aria-label="Request flow diagram"><span class="hl">Browser</span>  navigate /~npub1…/index.html
+   │
+   ▼
+<span class="hl">Service Worker</span>  intercepts FetchEvent
+   │
+   ├─▶ <span class="hl">Nostr Relay</span>  REQ kind:15128 by pubkey
+   │        ◀── EVENT { files: { "/index.html": "abc123…" } }
+   │
+   ├─▶ <span class="hl">Blossom Server</span>  GET /abc123…
+   │        ◀── blob bytes
+   │
+   ├─ verify SHA-256(blob) === "abc123…"  ✓
+   │
+   └─▶ <span class="hl">Browser</span>  Response(blob, { Content-Type: text/html })</div>
+
+      <div class="integrity-note">
+        <h3>Content integrity by default</h3>
+        <p>Because every file is identified by its SHA-256 hash in the manifest — and the manifest is signed by the site owner's Nostr key — a visitor cannot be served a tampered file without the hash check failing. There is no TLS certificate to steal, no CDN to compromise, and no origin server to target.</p>
+      </div>
+    </main>
+
+    <footer class="page-shell">
+      <p>Built with Aura. Published on Nostr. This page was assembled by a Service Worker from content-addressed blobs.</p>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
