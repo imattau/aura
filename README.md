@@ -1,0 +1,2 @@
+# aura
+Nostr based internet
