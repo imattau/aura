@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aura — Nostr-native web</title>
+    <meta name="description" content="Aura is a Nostr-native web container. Publish complete websites using cryptographically verified blobs — no servers, no DNS." />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <nav class="site-nav" aria-label="Primary">
+        <span class="logo">
+          <img src="/icon.svg" alt="" aria-hidden="true" />
+          Aura
+        </span>
+        <a href="index.html" aria-current="page">Home</a>
+        <a href="how-it-works.html">How it works</a>
+      </nav>
+
+      <section class="hero">
+        <div class="eyebrow">Nostr-native web</div>
+        <h1>Publish websites<br/>without servers</h1>
+        <p class="lede">
+          Aura lets you host complete, multi-page websites on Nostr relays and
+          Blossom storage — identified by your public key, assembled in the
+          browser by a Service Worker, with no DNS and no traditional
+          infrastructure.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="how-it-works.html">How it works</a>
+          <a class="btn btn-ghost" href="https://github.com/imattau/aura">View source</a>
+        </div>
+      </section>
+
+      <section class="how-strip" aria-label="How Aura works">
+        <div class="how-card">
+          <div class="step-num">Step 1</div>
+          <h3>Nostr manifest</h3>
+          <p>You publish a <code>kind:15128</code> event mapping your site's URL paths to SHA-256 blob hashes. Your Nostr key is your domain.</p>
+        </div>
+        <div class="how-card">
+          <div class="step-num">Step 2</div>
+          <h3>Blossom storage</h3>
+          <p>Your HTML, CSS, JS and assets live on Blossom servers as immutable, content-addressed blobs — anyone can mirror them.</p>
+        </div>
+        <div class="how-card">
+          <div class="step-num">Step 3</div>
+          <h3>Browser assembles</h3>
+          <p>A Service Worker intercepts navigation requests, fetches the manifest from a relay, retrieves verified blobs, and constructs the page locally.</p>
+        </div>
+      </section>
+
+      <section class="features">
+        <h2>What makes it different</h2>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <strong>No DNS</strong>
+            <p>Sites are addressed by Nostr public key — no domain registrar, no nameserver, no ICANN.</p>
+          </div>
+          <div class="feature-item">
+            <strong>No origin server</strong>
+            <p>After the Service Worker installs, zero bytes flow through any server you control.</p>
+          </div>
+          <div class="feature-item">
+            <strong>Content integrity</strong>
+            <p>Every blob is verified by SHA-256 before it reaches the browser. Tampered files are rejected silently.</p>
+          </div>
+          <div class="feature-item">
+            <strong>Censorship resistant</strong>
+            <p>Blobs are public and anyone can mirror them. Relay your manifest to as many relays as you like.</p>
+          </div>
+          <div class="feature-item">
+            <strong>Nostr-native identity</strong>
+            <p>Your npub is your website address. Sign in with NIP-07 or NIP-46 — no passwords.</p>
+          </div>
+          <div class="feature-item">
+            <strong>Versioned publishing</strong>
+            <p>Publish a new manifest event to update your site. Old versions remain accessible if anyone cached them.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="cta-bar">
+        <div>
+          <h2>See how the request works</h2>
+          <p>Trace a page load from the address bar to the browser response.</p>
+        </div>
+        <a class="btn btn-primary" href="how-it-works.html">Read the walkthrough →</a>
+      </div>
+    </main>
+
+    <footer class="page-shell">
+      <p>Built with Aura. Published on Nostr. This page was assembled by a Service Worker from content-addressed blobs.</p>
+    </footer>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
