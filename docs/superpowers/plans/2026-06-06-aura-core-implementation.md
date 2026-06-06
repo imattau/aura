@@ -1855,6 +1855,310 @@ git commit -m "chore: final build verification — lint, format, tests, producti
 
 ---
 
+## Task 15: Publisher CLI
+
+**Files:**
+- Create: `src/cli/publish.ts`
+- Create: `src/cli/publish.test.ts`
+
+A Node.js CLI script that uploads a static build output directory to a Blossom server, then publishes a `kind:15128` manifest event to Nostr relays mapping each file path to its SHA-256 hash.
+
+**Usage:**
+```bash
+npx ts-node src/cli/publish.ts --dir dist/ --name my-site --relay wss://relay.damus.io --blossom https://blossom.primal.net
+```
+
+- [ ] **Step 1: Add CLI dependencies**
+
+```bash
+npm install --save-dev ts-node
+npm install commander
+```
+
+- [ ] **Step 2: Write failing tests**
+
+```typescript
+// src/cli/publish.test.ts
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readdirSync, readFileSync } from "fs";
+import { resolve } from "path";
+
+// Mock fs so tests don't require a real dist/ directory
+vi.mock("fs", () => ({
+  readdirSync: vi.fn(),
+  readFileSync: vi.fn(),
+  statSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
+}));
+
+vi.mock("node-fetch", () => ({ default: vi.fn() }));
+
+import { collectFiles, buildManifestContent } from "./publish";
+
+describe("collectFiles", () => {
+  it("returns a flat list of relative file paths from a directory", () => {
+    (readdirSync as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(["index.html", "assets"])
+      .mockReturnValueOnce(["main.js"]);
+    const { statSync } = await import("fs");
+    (statSync as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce({ isDirectory: () => false })  // index.html
+      .mockReturnValueOnce({ isDirectory: () => true })   // assets/
+      .mockReturnValueOnce({ isDirectory: () => false }); // assets/main.js
+    const files = collectFiles("/fake/dist");
+    expect(files).toContain("/index.html");
+    expect(files).toContain("/assets/main.js");
+  });
+});
+
+describe("buildManifestContent", () => {
+  it("produces JSON with a files map", () => {
+    const fileMap: Record<string, string> = {
+      "/index.html": "abc123",
+      "/assets/main.js": "def456",
+    };
+    const content = buildManifestContent(fileMap);
+    const parsed = JSON.parse(content);
+    expect(parsed.files["/index.html"]).toBe("abc123");
+    expect(parsed.files["/assets/main.js"]).toBe("def456");
+  });
+});
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+```bash
+npm test -- src/cli/publish.test.ts
+```
+
+Expected: FAIL — "Cannot find module './publish'"
+
+- [ ] **Step 4: Write `src/cli/publish.ts`**
+
+```typescript
+#!/usr/bin/env node
+import { createReadStream, readdirSync, readFileSync, statSync } from "fs";
+import { join, relative } from "path";
+import { createHash } from "crypto";
+import { Command } from "commander";
+import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-tools";
+import type { UnsignedEvent } from "nostr-tools";
+
+// ---------------------------------------------------------------------------
+// Pure helpers (exported for unit tests)
+// ---------------------------------------------------------------------------
+
+/** Recursively collect all file paths under `dir`, returning them as
+ *  root-relative paths starting with "/". */
+export function collectFiles(dir: string, base = dir): string[] {
+  const entries = readdirSync(dir);
+  const result: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      result.push(...collectFiles(full, base));
+    } else {
+      result.push("/" + relative(base, full).replace(/\\/g, "/"));
+    }
+  }
+  return result;
+}
+
+/** Build the JSON string stored in the kind:15128 event's `content` field. */
+export function buildManifestContent(fileMap: Record<string, string>): string {
+  return JSON.stringify({ files: fileMap });
+}
+
+/** Compute the SHA-256 hex digest of a file on disk. */
+export function hashFile(filePath: string): string {
+  const data = readFileSync(filePath);
+  return createHash("sha256").update(data).digest("hex");
+}
+
+// ---------------------------------------------------------------------------
+// Upload a single file to a Blossom server
+// ---------------------------------------------------------------------------
+
+async function uploadBlob(
+  filePath: string,
+  hash: string,
+  blossomServer: string
+): Promise<void> {
+  const url = `${blossomServer.replace(/\/$/, "")}/upload`;
+  const data = readFileSync(filePath);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-SHA-256": hash,
+    },
+    body: data,
+  });
+  if (!res.ok) {
+    throw new Error(`Blossom upload failed for ${filePath}: ${res.status} ${res.statusText}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Publish the manifest event to Nostr relays
+// ---------------------------------------------------------------------------
+
+async function publishManifest(
+  fileMap: Record<string, string>,
+  siteName: string,
+  relayUrls: string[],
+  secretKey: Uint8Array
+): Promise<void> {
+  const content = buildManifestContent(fileMap);
+  const unsigned: UnsignedEvent = {
+    kind: 15128,
+    created_at: Math.floor(Date.now() / 1000),
+    tags: [["name", siteName]],
+    content,
+    pubkey: getPublicKey(secretKey),
+  };
+  const event = finalizeEvent(unsigned, secretKey);
+
+  await Promise.all(
+    relayUrls.map(
+      (url) =>
+        new Promise<void>((resolve, reject) => {
+          const ws = new WebSocket(url);
+          ws.onopen = () => {
+            ws.send(JSON.stringify(["EVENT", event]));
+          };
+          ws.onmessage = (msg) => {
+            const data = JSON.parse(msg.data as string);
+            if (Array.isArray(data) && data[0] === "OK") {
+              ws.close();
+              resolve();
+            }
+          };
+          ws.onerror = (err) => reject(err);
+          // Timeout after 10 s
+          setTimeout(() => { ws.close(); resolve(); }, 10_000);
+        })
+    )
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const program = new Command();
+  program
+    .name("aura-publish")
+    .description("Upload a static build to Blossom and publish a kind:15128 manifest to Nostr")
+    .requiredOption("--dir <path>", "Path to the static build output directory (e.g. dist/)")
+    .requiredOption("--name <site-name>", "Site name tag for the manifest event")
+    .option(
+      "--relay <url>",
+      "Nostr relay URL (repeatable)",
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option(
+      "--blossom <url>",
+      "Blossom server URL (repeatable)",
+      (val: string, prev: string[]) => [...prev, val],
+      [] as string[]
+    )
+    .option("--nsec <hex>", "Secret key hex (32 bytes). Omit to generate a throwaway key for testing.");
+
+  program.parse(process.argv);
+  const opts = program.opts<{
+    dir: string;
+    name: string;
+    relay: string[];
+    blossom: string[];
+    nsec?: string;
+  }>();
+
+  const relays = opts.relay.length > 0 ? opts.relay : ["wss://relay.damus.io", "wss://nos.lol"];
+  const blossomServers = opts.blossom.length > 0 ? opts.blossom : ["https://blossom.primal.net"];
+  const secretKey = opts.nsec
+    ? Buffer.from(opts.nsec, "hex")
+    : generateSecretKey();
+
+  console.log(`Publishing site "${opts.name}" from ${opts.dir}`);
+  console.log(`Relays: ${relays.join(", ")}`);
+  console.log(`Blossom: ${blossomServers.join(", ")}`);
+
+  // 1. Collect and hash all files
+  const filePaths = collectFiles(opts.dir);
+  const fileMap: Record<string, string> = {};
+  for (const relPath of filePaths) {
+    const absPath = join(opts.dir, relPath);
+    fileMap[relPath] = hashFile(absPath);
+    console.log(`  hashed ${relPath} → ${fileMap[relPath]}`);
+  }
+
+  // 2. Upload blobs to Blossom
+  for (const relPath of filePaths) {
+    const absPath = join(opts.dir, relPath);
+    const hash = fileMap[relPath];
+    for (const server of blossomServers) {
+      try {
+        await uploadBlob(absPath, hash, server);
+        console.log(`  uploaded ${relPath} to ${server}`);
+        break; // first success is enough
+      } catch (err) {
+        console.warn(`  warn: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  // 3. Publish kind:15128 manifest
+  await publishManifest(fileMap, opts.name, relays, secretKey as Uint8Array);
+  console.log("Manifest published.");
+}
+
+// Run only when executed directly (not imported by tests)
+if (process.argv[1]?.endsWith("publish.ts") || process.argv[1]?.endsWith("publish.js")) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+```bash
+npm test -- src/cli/publish.test.ts
+```
+
+Expected: PASS (3 tests)
+
+- [ ] **Step 6: Add `publish` script to `package.json`**
+
+Add to `"scripts"`:
+
+```json
+"publish-site": "ts-node src/cli/publish.ts"
+```
+
+- [ ] **Step 7: Smoke-test CLI invocation**
+
+Build the project first, then run the CLI against `dist/`:
+
+```bash
+npm run build
+npx ts-node src/cli/publish.ts --dir dist/ --name test-site --relay wss://relay.damus.io --blossom https://blossom.primal.net
+```
+
+Expected: Files are hashed and logged, upload attempts are made (may warn if server is unreachable in CI), manifest is published to relay.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/cli/publish.ts src/cli/publish.test.ts package.json package-lock.json
+git commit -m "feat: publisher CLI — hash files, upload blobs to Blossom, publish kind:15128 manifest"
+```
+
+---
+
 ## Appendix: Key Interfaces Summary
 
 | Symbol | File | Signature |
