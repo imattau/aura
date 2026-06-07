@@ -77,11 +77,18 @@ function makeBlossomAuth(hash, mime, bytes) {
 }
 
 // --- Upload to Blossom ---
-for (const [urlPath, { bytes, hash, mime }] of Object.entries(fileData)) {
-  const headRes = await fetch(`${BLOSSOM}/${hash}`, { method: 'HEAD' });
-  if (headRes.ok) {
-    console.log(`✓ already exists  ${urlPath}`);
-  } else {
+const MAX_ATTEMPTS = 3;
+
+async function uploadAndVerify(urlPath, { bytes, hash, mime }) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // Check if already present
+    const headRes = await fetch(`${BLOSSOM}/${hash}`, { method: 'HEAD' });
+    if (headRes.ok) {
+      console.log(attempt === 1 ? `✓ already exists  ${urlPath}` : `✓ verified        ${urlPath} (attempt ${attempt})`);
+      return;
+    }
+
+    // Upload
     const authHeader = makeBlossomAuth(hash, mime, bytes);
     const putRes = await fetch(`${BLOSSOM}/upload`, {
       method: 'PUT',
@@ -92,8 +99,24 @@ for (const [urlPath, { bytes, hash, mime }] of Object.entries(fileData)) {
       const txt = await putRes.text().catch(() => '');
       throw new Error(`Upload failed for ${urlPath}: ${putRes.status} ${txt}`);
     }
-    console.log(`✓ uploaded        ${urlPath}`);
+
+    // Verify blob is accessible after upload
+    const verifyRes = await fetch(`${BLOSSOM}/${hash}`, { method: 'HEAD' });
+    if (verifyRes.ok) {
+      console.log(`✓ uploaded        ${urlPath}`);
+      return;
+    }
+
+    if (attempt < MAX_ATTEMPTS) {
+      console.warn(`⚠ upload not yet visible for ${urlPath}, retrying (${attempt}/${MAX_ATTEMPTS})…`);
+    } else {
+      throw new Error(`Blob not accessible after ${MAX_ATTEMPTS} attempts: ${urlPath} (${hash})`);
+    }
   }
+}
+
+for (const [urlPath, entry] of Object.entries(fileData)) {
+  await uploadAndVerify(urlPath, entry);
 }
 
 // --- Build and sign kind:15128 event ---
