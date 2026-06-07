@@ -12,6 +12,7 @@ describe("browser store", () => {
     expect(listRecentSites()).toEqual([
       {
         npub: "npub1abc",
+        siteName: null,
         path: "/about.html",
         label: "Example",
         description: null,
@@ -26,6 +27,14 @@ describe("browser store", () => {
 
     expect(listRecentSites()).toHaveLength(1);
     expect(listRecentSites()[0]?.label).toBe("Example 2");
+  });
+
+  it("distinguishes recent sites by site name", () => {
+    recordRecentSite("npub1abc", "/index.html", "Alpha", null, "site-a");
+    recordRecentSite("npub1abc", "/index.html", "Beta", null, "site-b");
+
+    expect(listRecentSites()).toHaveLength(2);
+    expect(listRecentSites()[0]?.siteName).toBe("site-b");
   });
 
   it("keeps the most recent entries first", () => {

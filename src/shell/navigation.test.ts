@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAuraNostrHash,
   buildAuraSearchHash,
+  buildAuraSettingsHash,
   buildAuraSiteHash,
   buildAuraSiteUrl,
   normalizeSitePath,
@@ -17,8 +19,16 @@ describe("normalizeSitePath", () => {
     expect(normalizeSitePath("/about.html")).toBe("/about.html");
   });
 
+  it("canonicalizes root to the index page", () => {
+    expect(normalizeSitePath("/")).toBe("/index.html");
+  });
+
   it("adds a leading slash to relative paths", () => {
     expect(normalizeSitePath("about.html")).toBe("/about.html");
+  });
+
+  it("collapses repeated leading slashes", () => {
+    expect(normalizeSitePath("//index.html")).toBe("/index.html");
   });
 });
 
@@ -26,6 +36,12 @@ describe("buildAuraSiteUrl", () => {
   it("builds a virtual Aura url", () => {
     expect(buildAuraSiteUrl("npub1abc", "about.html")).toBe(
       "/~npub1abc/about.html",
+    );
+  });
+
+  it("builds a named Aura site url", () => {
+    expect(buildAuraSiteUrl("npub1abc", "/index.html", "my-site")).toBe(
+      "/~npub1abc/my-site/index.html",
     );
   });
 });
@@ -36,18 +52,39 @@ describe("buildAuraSiteHash", () => {
       "#/~npub1abc/about.html",
     );
   });
+
+  it("builds a named shell hash", () => {
+    expect(buildAuraSiteHash("npub1abc", "/index.html", "my-site")).toBe(
+      "#/~npub1abc/my-site/index.html",
+    );
+  });
 });
 
 describe("readAuraSiteFromHash", () => {
   it("parses an aura site hash", () => {
     expect(readAuraSiteFromHash("#/~npub1abc/about.html")).toEqual({
       npub: "npub1abc",
+      siteName: null,
       path: "/about.html",
+    });
+  });
+
+  it("parses a named aura site hash", () => {
+    expect(readAuraSiteFromHash("#/~npub1abc/my-site/index.html")).toEqual({
+      npub: "npub1abc",
+      siteName: "my-site",
+      path: "/index.html",
     });
   });
 
   it("returns null for unrelated hashes", () => {
     expect(readAuraSiteFromHash("#settings")).toBeNull();
+  });
+});
+
+describe("buildAuraSettingsHash", () => {
+  it("builds the settings hash", () => {
+    expect(buildAuraSettingsHash()).toBe("#settings");
   });
 });
 
@@ -59,7 +96,20 @@ describe("readAuraRouteFromHash", () => {
     });
   });
 
+  it("parses a native nostr hash", () => {
+    expect(readAuraRouteFromHash(buildAuraNostrHash("nostr:npub1abc"))).toEqual(
+      {
+        kind: "nostr",
+        uri: "nostr:npub1abc",
+      },
+    );
+  });
+
+  it("parses the settings hash", () => {
+    expect(readAuraRouteFromHash("#settings")).toEqual({ kind: "settings" });
+  });
+
   it("returns home for an unrelated hash", () => {
-    expect(readAuraRouteFromHash("#settings")).toEqual({ kind: "home" });
+    expect(readAuraRouteFromHash("#unknown")).toEqual({ kind: "home" });
   });
 });

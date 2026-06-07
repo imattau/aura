@@ -8,10 +8,14 @@ import { AddressBar } from "./components/AddressBar";
 import { AuthPanel } from "./components/AuthPanel";
 import { Avatar } from "./components/Avatar";
 import { Icon } from "./components/Icon";
+import { NostrObjectPage } from "./components/NostrObjectPage";
+import { SettingsPage } from "./components/SettingsPage";
 import { SearchPage } from "./components/SearchPage";
 import { SiteFrame } from "./components/SiteFrame";
 import {
+  buildAuraNostrHash,
   buildAuraSearchHash,
+  buildAuraSettingsHash,
   buildAuraSiteHash,
   readAuraRouteFromHash,
 } from "./navigation";
@@ -57,12 +61,18 @@ function registerServiceWorker(): void {
 function resolveSiteLabel(
   npub: string,
   path: string,
+  siteName: string | null,
   preferredLabel: string | null | undefined,
   sites: RecentSite[],
 ): string {
   if (preferredLabel) return preferredLabel;
-  const recent = sites.find((site) => site.npub === npub && site.path === path);
-  return recent?.label ?? npub;
+  const recent = sites.find(
+    (site) =>
+      site.npub === npub &&
+      site.path === path &&
+      (site.siteName ?? null) === (siteName ?? null),
+  );
+  return recent?.label ?? siteName ?? npub;
 }
 
 export function App() {
@@ -72,22 +82,33 @@ export function App() {
   const initialRoute = readAuraRouteFromHash(window.location.hash);
   const [activeSite, setActiveSite] = useState<{
     npub: string;
+    siteName: string | null;
     path: string;
   } | null>(() => (initialRoute.kind === "site" ? initialRoute : null));
   const [currentNpub, setCurrentNpub] = useState<string | null>(
     activeSite?.npub ?? null,
   );
+  const [currentSiteName, setCurrentSiteName] = useState<string | null>(
+    activeSite?.siteName ?? null,
+  );
   const [currentPath, setCurrentPath] = useState<string>(
     activeSite?.path ?? "/index.html",
+  );
+  const [showSettings, setShowSettings] = useState(
+    () => initialRoute.kind === "settings",
   );
   const [currentPetname, setCurrentPetname] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string | null>(() =>
     initialRoute.kind === "search" ? initialRoute.query : null,
   );
+  const [nativeNostrUri, setNativeNostrUri] = useState<string | null>(() =>
+    initialRoute.kind === "nostr" ? initialRoute.uri : null,
+  );
   const [searchNonce, setSearchNonce] = useState(0);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [themeColor, setThemeColor] = useState<string | null>(null);
+  const [nativeTitle, setNativeTitle] = useState<string>("Nostr");
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(() => isStandaloneMode());
@@ -106,8 +127,19 @@ export function App() {
           },
         ];
   const activeSiteLabel =
-    currentPetname ?? currentNpub ?? (searchQuery ? "Search" : "Aura");
-  const canGoHome = Boolean(activeSite || searchQuery);
+    showSettings
+      ? "Settings"
+      : currentPetname ??
+        currentNpub ??
+        (nativeNostrUri ? nativeTitle : null) ??
+        (searchQuery ? "Search" : "Aura");
+  const currentSitePathLabel =
+    currentSiteName && currentSiteName.trim()
+      ? `${currentSiteName.trim()}${currentPath}`
+      : currentPath;
+  const canGoHome = Boolean(
+    activeSite || searchQuery || nativeNostrUri || showSettings,
+  );
 
   useEffect(() => {
     if (document.readyState === "complete") {
@@ -197,30 +229,68 @@ export function App() {
     const handleHashChange = () => {
       const route = readAuraRouteFromHash(window.location.hash);
       if (route.kind === "site") {
+        setShowSettings(false);
         setActiveSite(route);
         setCurrentNpub(route.npub);
+        setCurrentSiteName(route.siteName);
         setCurrentPath(route.path);
         setSearchQuery(null);
+        setNativeNostrUri(null);
+        setNativeTitle("Nostr");
         setCurrentPetname(
-          resolveSiteLabel(route.npub, route.path, null, recentSites),
+          resolveSiteLabel(route.npub, route.path, route.siteName, null, recentSites),
         );
         return;
       }
 
       if (route.kind === "search") {
+        setShowSettings(false);
         setActiveSite(null);
         setCurrentNpub(null);
+        setCurrentSiteName(null);
         setCurrentPath(route.query || "Search");
         setCurrentPetname(null);
         setSearchQuery(route.query);
+        setNativeNostrUri(null);
+        setNativeTitle("Nostr");
         return;
       }
 
+      if (route.kind === "nostr") {
+        setShowSettings(false);
+        setActiveSite(null);
+        setCurrentNpub(null);
+        setCurrentSiteName(null);
+        setCurrentPath("Nostr");
+        setCurrentPetname(null);
+        setSearchQuery(null);
+        setNativeNostrUri(route.uri);
+        setNativeTitle("Nostr");
+        return;
+      }
+
+      if (route.kind === "settings") {
+        setActiveSite(null);
+        setCurrentNpub(null);
+        setCurrentSiteName(null);
+        setCurrentPath("Settings");
+        setCurrentPetname(null);
+        setSearchQuery(null);
+        setNativeNostrUri(null);
+        setNativeTitle("Nostr");
+        setShowSettings(true);
+        return;
+      }
+
+      setShowSettings(false);
       setActiveSite(null);
       setCurrentNpub(null);
+      setCurrentSiteName(null);
       setCurrentPath("/index.html");
       setCurrentPetname(null);
       setSearchQuery(null);
+      setNativeNostrUri(null);
+      setNativeTitle("Nostr");
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -229,32 +299,59 @@ export function App() {
     };
   }, [recentSites]);
 
-  async function handleNavigate(npub: string, path: string) {
+  async function handleNavigate(
+    npub: string,
+    path: string,
+    siteName?: string | null,
+  ) {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    let canonicalSiteName = siteName?.trim() || null;
 
     try {
-      const event = await fetchManifest(npub);
+      const event = await fetchManifest(npub, {
+        siteName: siteName ?? undefined,
+        allowLegacy: true,
+      });
       const manifest = event ? parseManifestMetadata(event) : null;
-      const name = manifest?.name ?? null;
-      if (name) {
-        registerPetname(name, npub);
+      canonicalSiteName = siteName?.trim() || manifest?.name?.trim() || null;
+      if (canonicalSiteName) {
+        registerPetname(canonicalSiteName, npub);
       }
       const targetPath =
         normalizedPath === "/"
           ? (manifest?.startPath ?? "/index.html")
           : normalizedPath;
-      const label = resolveSiteLabel(npub, targetPath, name, recentSites);
+      const label = resolveSiteLabel(
+        npub,
+        targetPath,
+        canonicalSiteName,
+        canonicalSiteName,
+        recentSites,
+      );
       setCurrentPetname(label);
-      recordRecentSite(npub, targetPath, label, manifest?.description ?? null);
+      recordRecentSite(
+        npub,
+        targetPath,
+        label,
+        manifest?.description ?? null,
+        canonicalSiteName,
+      );
       setRecentSites(listRecentSites());
     } finally {
       const targetPath =
         normalizedPath === "/" ? "/index.html" : normalizedPath;
-      setActiveSite({ npub, path: targetPath });
+      setActiveSite({ npub, siteName: canonicalSiteName, path: targetPath });
       setCurrentNpub(npub);
+      setCurrentSiteName(canonicalSiteName);
       setCurrentPath(targetPath);
       setSearchQuery(null);
-      window.location.hash = buildAuraSiteHash(npub, targetPath);
+      setNativeNostrUri(null);
+      setNativeTitle("Nostr");
+      window.location.hash = buildAuraSiteHash(
+        npub,
+        targetPath,
+        canonicalSiteName,
+      );
     }
   }
 
@@ -264,15 +361,35 @@ export function App() {
 
     setActiveSite(null);
     setCurrentNpub(null);
+    setCurrentSiteName(null);
     setCurrentPath(trimmed);
     setCurrentPetname(null);
     setSearchQuery(trimmed);
+    setNativeNostrUri(null);
+    setNativeTitle("Nostr");
     window.location.hash = buildAuraSearchHash(trimmed);
+  }
+
+  function handleOpenNostr(uri: string) {
+    setShowSettings(false);
+    setActiveSite(null);
+    setCurrentNpub(null);
+    setCurrentSiteName(null);
+    setCurrentPath("Nostr");
+    setCurrentPetname(null);
+    setSearchQuery(null);
+    setNativeNostrUri(uri);
+    setNativeTitle("Nostr");
+    window.location.hash = buildAuraNostrHash(uri);
   }
 
   function goHome() {
     setThemeColor(null);
     setSearchQuery(null);
+    setNativeNostrUri(null);
+    setNativeTitle("Nostr");
+    setCurrentSiteName(null);
+    setShowSettings(false);
     window.location.hash = "";
   }
 
@@ -325,6 +442,17 @@ export function App() {
     await publishMuteListEntry(pubkeyToBlock);
   }
 
+  function handleOpenSettings() {
+    window.location.hash = buildAuraSettingsHash();
+  }
+
+  function handleLogout() {
+    logout();
+    setPubkey(null);
+    setProfilePicture(null);
+    goHome();
+  }
+
   return (
     <div class={`aura-shell ${isStandalone ? "aura-shell--standalone" : ""}`}>
       <header
@@ -346,7 +474,9 @@ export function App() {
             <div class="aura-window-title">
               <span class="aura-window-title-label">{activeSiteLabel}</span>
               {activeSite ? (
-                <span class="aura-window-title-path">{currentPath}</span>
+                <span class="aura-window-title-path">
+                  {currentSitePathLabel}
+                </span>
               ) : (
                 <span class="aura-window-title-path">Home</span>
               )}
@@ -404,12 +534,20 @@ export function App() {
               Install Aura
             </button>
           ) : null}
-          {isStandalone && pubkey ? (
-            <Avatar
-              pubkey={pubkey}
-              src={profilePicture}
-              label={currentPetname ?? currentNpub ?? "Signed in user"}
-            />
+          {pubkey ? (
+            <button
+              type="button"
+              class={`avatar-button ${showSettings ? "is-active" : ""}`}
+              onClick={handleOpenSettings}
+              aria-label="Open settings"
+              title="Open settings"
+            >
+              <Avatar
+                pubkey={pubkey}
+                src={profilePicture}
+                label={currentPetname ?? currentNpub ?? "Signed in user"}
+              />
+            </button>
           ) : null}
         </div>
 
@@ -420,26 +558,43 @@ export function App() {
             currentSearchQuery={searchQuery}
             onNavigate={handleNavigate}
             onSearch={handleSearch}
+            onOpenNostr={handleOpenNostr}
           />
         ) : null}
       </header>
 
-      <main class="aura-stage">
+      <main
+        class={`aura-stage ${showSettings ? "aura-stage--scroll" : ""}`}
+      >
         {activeSite ? (
           <section class="site-shell">
             <SiteFrame
               npub={activeSite.npub}
+              siteName={activeSite.siteName}
               path={activeSite.path}
-              frameKey={`${activeSite.npub}:${activeSite.path}:${reloadNonce}`}
+              frameKey={`${activeSite.npub}:${activeSite.siteName ?? ""}:${activeSite.path}:${reloadNonce}`}
             />
           </section>
+        ) : showSettings && pubkey ? (
+          <SettingsPage
+            pubkey={pubkey}
+            profilePicture={profilePicture}
+            onLogout={handleLogout}
+            onClose={goBack}
+          />
         ) : searchQuery ? (
           <SearchPage
             key={`${searchQuery}:${searchNonce}`}
             query={searchQuery}
             currentPubkey={pubkey}
             onOpenSite={handleNavigate}
+            onOpenNostr={handleOpenNostr}
             onBlockPubkey={handleBlockPubkey}
+          />
+        ) : nativeNostrUri ? (
+          <NostrObjectPage
+            uri={nativeNostrUri}
+            onResolvedTitle={setNativeTitle}
           />
         ) : (
           <section class="launch-card">
@@ -485,10 +640,12 @@ export function App() {
                 <div class="recent-sites-list">
                   {displayedRecentSites.map((site) => (
                     <button
-                      key={`${site.npub}:${site.path}`}
+                      key={`${site.npub}:${site.siteName ?? ""}:${site.path}`}
                       type="button"
                       class="recent-site"
-                      onClick={() => handleNavigate(site.npub, site.path)}
+                      onClick={() =>
+                        handleNavigate(site.npub, site.path, site.siteName)
+                      }
                     >
                       <strong>{site.label}</strong>
                       {site.description ? (

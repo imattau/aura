@@ -5,6 +5,7 @@ const MAX_RECENT_SITES = 8;
 
 export interface RecentSite {
   npub: string;
+  siteName?: string | null;
   path: string;
   label: string;
   description?: string | null;
@@ -35,10 +36,13 @@ export function recordRecentSite(
   path: string,
   label: string,
   description?: string | null,
+  siteName?: string | null,
 ): void {
   const normalizedPath = normalizeSitePath(path);
+  const normalizedSiteName = siteName?.trim() || null;
   const nextEntry: RecentSite = {
     npub,
+    siteName: normalizedSiteName,
     path: normalizedPath,
     label: label.trim() || npub,
     description: description?.trim() || null,
@@ -46,7 +50,10 @@ export function recordRecentSite(
   };
 
   const nextSites = loadRecentSites().filter(
-    (site) => site.npub !== npub || site.path !== normalizedPath,
+    (site) =>
+      site.npub !== npub ||
+      site.path !== normalizedPath ||
+      (site.siteName ?? null) !== normalizedSiteName,
   );
   nextSites.unshift(nextEntry);
   saveRecentSites(nextSites.slice(0, MAX_RECENT_SITES));

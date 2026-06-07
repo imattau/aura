@@ -1,11 +1,16 @@
 import type { NostrEvent } from "nostr-tools";
 import {
-  AURA_MANIFEST_TAG_KEY,
   AURA_MANIFEST_TAG_VALUE,
   isAuraManifestEvent,
+  parseManifestMetadata,
 } from "../sw/manifest";
 import { DEFAULT_RELAYS } from "./constants";
-import { getLatestCachedEvent, putEvents } from "./event-store";
+import {
+  getCachedEventById,
+  getLatestCachedEvent,
+  getRecentCachedEvents,
+  putEvents,
+} from "./event-store";
 import { getPool, getPoolRelayUrls } from "./pool";
 
 type SimpleFilter = {
@@ -14,6 +19,8 @@ type SimpleFilter = {
   limit: number;
   "#t"?: string[];
 };
+
+type RawNostrFilter = Record<string, unknown>;
 
 async function queryLatest(filter: SimpleFilter): Promise<NostrEvent | null> {
   const cached = await getLatestCachedEvent({
@@ -58,19 +65,133 @@ async function queryLatest(filter: SimpleFilter): Promise<NostrEvent | null> {
   return latest;
 }
 
+async function queryLatestRaw(
+  filter: RawNostrFilter,
+): Promise<NostrEvent | null> {
+  const pool = getPool();
+  if (!pool) return null;
+
+  const relayUrls = getPoolRelayUrls();
+  const relays = relayUrls.length > 0 ? relayUrls : DEFAULT_RELAYS;
+  const seen: NostrEvent[] = [];
+
+  await new Promise<void>((resolve) => {
+    const subscription = pool.request(relays, [filter]).subscribe({
+      next(event) {
+        seen.push(event);
+      },
+      error() {
+        resolve();
+      },
+      complete() {
+        resolve();
+      },
+    });
+
+    void subscription;
+  });
+
+  if (seen.length === 0) return null;
+  const latest = seen.reduce((latest, event) =>
+    event.created_at > latest.created_at ? event : latest,
+  );
+
+  await putEvents(seen);
+  return latest;
+}
+
 export async function fetchManifest(
   pubkey: string,
+  options?: { siteName?: string | null; allowLegacy?: boolean },
 ): Promise<NostrEvent | null> {
-  return queryLatest({
+  const siteName = options?.siteName?.trim() ?? null;
+  const allowLegacy = options?.allowLegacy ?? false;
+
+  if (siteName) {
+    const cachedEvents = await getRecentCachedEvents({
+      kinds: [15128],
+      authors: [pubkey],
+      limit: 20,
+    });
+    const cached = cachedEvents.find((event) => {
+      if (!allowLegacy && !isAuraManifestEvent(event)) return false;
+      return parseManifestMetadata(event).name === siteName;
+    });
+    if (cached) return cached;
+
+    const tagged = await queryLatestRaw({
+      kinds: [15128],
+      authors: [pubkey],
+      limit: 1,
+      "#name": [siteName],
+      "#t": [AURA_MANIFEST_TAG_VALUE],
+    });
+    if (tagged) return tagged;
+
+    if (!allowLegacy) return null;
+
+    return queryLatestRaw({
+      kinds: [15128],
+      authors: [pubkey],
+      limit: 1,
+      "#name": [siteName],
+    });
+  }
+
+  const tagged = await queryLatest({
     kinds: [15128],
     authors: [pubkey],
     limit: 1,
     "#t": [AURA_MANIFEST_TAG_VALUE],
   });
+
+  if (tagged || !allowLegacy) return tagged;
+
+  const cachedLegacy = await getLatestCachedEvent({
+    kinds: [15128],
+    authors: [pubkey],
+  });
+  if (cachedLegacy) return cachedLegacy;
+
+  return queryLatestRaw({
+    kinds: [15128],
+    authors: [pubkey],
+    limit: 1,
+  });
 }
 
 export async function fetchProfile(pubkey: string): Promise<NostrEvent | null> {
   return queryLatest({ kinds: [0], authors: [pubkey], limit: 1 });
+}
+
+export async function fetchEventById(id: string): Promise<NostrEvent | null> {
+  const cached = await getCachedEventById(id);
+  if (cached) return cached;
+
+  return queryLatestRaw({ ids: [id], limit: 1 });
+}
+
+export async function fetchAddressableEvent(options: {
+  pubkey: string;
+  kind: number;
+  identifier: string;
+}): Promise<NostrEvent | null> {
+  const cachedEvents = await getRecentCachedEvents({
+    kinds: [options.kind],
+    authors: [options.pubkey],
+    limit: 20,
+  });
+  const cached = cachedEvents.find((event) =>
+    event.tags.some((tag) => tag[0] === "d" && tag[1] === options.identifier),
+  );
+  if (cached) return cached;
+
+  return queryLatestRaw({
+    kinds: [options.kind],
+    authors: [options.pubkey],
+    "#d": [options.identifier],
+    limit: 1,
+  });
 }
 
 export async function fetchBlossomServers(pubkey: string): Promise<string[]> {

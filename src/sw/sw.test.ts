@@ -53,6 +53,8 @@ vi.mock("./manifest", () => ({
   isAuraManifestEvent: (event: { tags?: string[][] }) =>
     event.tags?.some((tag) => tag[0] === "t" && tag[1] === "aura-site") ??
     false,
+  parseManifestMetadata: (event: { content: string }) =>
+    JSON.parse(event.content),
   setCachedManifest,
 }));
 
@@ -121,8 +123,7 @@ describe("handleAuraRequest", () => {
 
     const pending: Promise<unknown>[] = [];
     const response = await handleAuraRequest(
-      "pubkey1",
-      "/index.html",
+      { npub: "pubkey1", siteName: null, path: "/index.html" },
       (promise) => pending.push(promise),
     );
 
@@ -133,8 +134,14 @@ describe("handleAuraRequest", () => {
 
     await Promise.all(pending);
 
-    expect(fetchManifest).toHaveBeenCalledWith("pubkey1");
-    expect(setCachedManifest).toHaveBeenCalledWith("pubkey1", freshManifest);
+    expect(fetchManifest).toHaveBeenCalledWith("pubkey1", {
+      allowLegacy: true,
+    });
+    expect(setCachedManifest).toHaveBeenCalledWith(
+      "pubkey1",
+      freshManifest,
+      undefined,
+    );
   });
 
   it("does not refresh when the cached manifest is fresh", async () => {
@@ -150,13 +157,54 @@ describe("handleAuraRequest", () => {
 
     const pending: Promise<unknown>[] = [];
     const response = await handleAuraRequest(
-      "pubkey1",
-      "/index.html",
+      { npub: "pubkey1", siteName: null, path: "/index.html" },
       (promise) => pending.push(promise),
     );
 
     expect(await response.text()).toBe("fresh html");
     expect(fetchManifest).not.toHaveBeenCalled();
     expect(pending).toHaveLength(0);
+  });
+
+  it("returns a diagnostic page when the manifest is missing", async () => {
+    getCachedManifestEntry.mockResolvedValueOnce(null);
+    fetchManifest.mockResolvedValueOnce(null);
+
+    const response = await handleAuraRequest({
+      npub: "pubkey1",
+      siteName: null,
+      path: "/index.html",
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Content-Type")).toContain("text/html");
+    expect(body).toContain("Manifest not found");
+    expect(body).toContain("npub: pubkey1");
+  });
+
+  it("returns a diagnostic page when the file is missing from the manifest", async () => {
+    getCachedManifestEntry.mockResolvedValueOnce({
+      event: {
+        ...freshManifest,
+        content: JSON.stringify({
+          files: {
+            "/about.html": "fresh-hash",
+          },
+        }),
+      },
+      cachedAt: Date.now() - 60 * 1000,
+    });
+    isCachedManifestFresh.mockReturnValueOnce(true);
+
+    const response = await handleAuraRequest({
+      npub: "pubkey1",
+      siteName: null,
+      path: "/index.html",
+    });
+    const body = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(body).toContain("Path not found in manifest");
   });
 });

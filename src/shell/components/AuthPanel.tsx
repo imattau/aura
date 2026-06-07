@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import {
   formatNip07Error,
   loginNip07,
@@ -14,15 +14,19 @@ export function AuthPanel({ onAuthenticated }: Props) {
   const [mode, setMode] = useState<"choose" | "extension" | "nip46" | "nsec">(
     "choose",
   );
+  const [nip07Available, setNip07Available] = useState(true);
   const [connectionString, setConnectionString] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    setNip07Available("nostr" in window);
+  }, []);
+
   async function handleNip07() {
-    if (!("nostr" in window)) {
+    if (!nip07Available) {
       setMode("nip46");
-      setError("No browser extension detected. Use Nostr Connect instead.");
       return;
     }
 
@@ -68,9 +72,8 @@ export function AuthPanel({ onAuthenticated }: Props) {
   }
 
   function selectExtension() {
-    if (!("nostr" in window)) {
+    if (!nip07Available) {
       setMode("nip46");
-      setError("No browser extension detected. Use Nostr Connect instead.");
       return;
     }
 
@@ -125,11 +128,13 @@ export function AuthPanel({ onAuthenticated }: Props) {
                   type="button"
                   class="auth-choice"
                   onClick={selectExtension}
-                  disabled={loading}
+                  disabled={loading || !nip07Available}
                 >
                   <span class="auth-choice-title">Extension</span>
                   <span class="auth-choice-copy">
-                    Use NIP-07 if your browser already has a signer extension.
+                    {nip07Available
+                      ? "Use NIP-07 if your browser already has a signer extension."
+                      : "This browser profile is not exposing NIP-07. Use Nostr Connect instead."}
                   </span>
                 </button>
                 <button
@@ -163,12 +168,17 @@ export function AuthPanel({ onAuthenticated }: Props) {
               <p class="auth-mode-kicker">Browser extension</p>
               <h2 id="auth-title">Connect your extension</h2>
               <p class="auth-copy">
-                Aura will request your public key from the browser extension and
-                keep only that pubkey in memory.
+                {nip07Available
+                  ? "Aura will request your public key from the browser extension and keep only that pubkey in memory."
+                  : "This browser profile is not exposing NIP-07. Use Nostr Connect instead, or enable the extension for this site."}
               </p>
               {error && <p class="error">{error}</p>}
               <div class="auth-actions">
-                <button type="button" onClick={handleNip07} disabled={loading}>
+                <button
+                  type="button"
+                  onClick={handleNip07}
+                  disabled={loading || !nip07Available}
+                >
                   {loading ? "Connecting..." : "Continue with extension"}
                 </button>
                 <button

@@ -131,11 +131,13 @@ import {
   logout,
   publishMuteListEntry,
 } from "./auth";
+import { clearSettings } from "./settings";
 
 describe("auth store", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    clearSettings();
     logout();
   });
 

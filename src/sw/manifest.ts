@@ -27,15 +27,17 @@ export function isAuraManifestEvent(event: NostrEvent): boolean {
   );
 }
 
-function cacheKey(pubkey: string): string {
-  return `manifest:${pubkey}`;
+function cacheKey(pubkey: string, siteName?: string | null): string {
+  const normalizedSiteName = siteName?.trim() ?? "";
+  return `manifest:${pubkey}:${normalizedSiteName}`;
 }
 
 export async function getCachedManifestEntry(
   pubkey: string,
+  siteName?: string | null,
 ): Promise<CachedManifest | null> {
   const cache = await caches.open(CACHE_NAME);
-  const response = await cache.match(cacheKey(pubkey));
+  const response = await cache.match(cacheKey(pubkey, siteName));
   if (!response) return null;
 
   try {
@@ -54,8 +56,9 @@ export function isCachedManifestFresh(
 
 export async function getCachedManifest(
   pubkey: string,
+  siteName?: string | null,
 ): Promise<NostrEvent | null> {
-  const entry = await getCachedManifestEntry(pubkey);
+  const entry = await getCachedManifestEntry(pubkey, siteName);
   if (!entry || !isCachedManifestFresh(entry)) return null;
   return entry.event;
 }
@@ -63,6 +66,7 @@ export async function getCachedManifest(
 export async function setCachedManifest(
   pubkey: string,
   event: NostrEvent,
+  siteName?: string | null,
 ): Promise<void> {
   const cache = await caches.open(CACHE_NAME);
   const entry: CachedManifest = {
@@ -70,16 +74,17 @@ export async function setCachedManifest(
     cachedAt: Date.now(),
   };
 
-  await cache.put(cacheKey(pubkey), new Response(JSON.stringify(entry)));
+  await cache.put(
+    cacheKey(pubkey, siteName),
+    new Response(JSON.stringify(entry)),
+  );
 }
 
 export function getManifestFiles(event: NostrEvent): Record<string, string> {
-  if (!isAuraManifestEvent(event)) return {};
   return parseManifestMetadata(event).files;
 }
 
 export function getManifestName(event: NostrEvent): string | null {
-  if (!isAuraManifestEvent(event)) return null;
   return parseManifestMetadata(event).name;
 }
 

@@ -8,10 +8,12 @@ const mockPool = {
 
 const mocks = vi.hoisted(() => {
   let cachedLatestEvent: unknown = null;
+  const getRecentCachedEvents = vi.fn(() => Promise.resolve([]));
   const getLatestCachedEvent = vi.fn(() => Promise.resolve(cachedLatestEvent));
   const putEvents = vi.fn().mockResolvedValue(undefined);
 
   return {
+    getRecentCachedEvents,
     getLatestCachedEvent,
     putEvents,
     setCachedLatestEvent: (event: unknown) => {
@@ -21,6 +23,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("./event-store", () => ({
+  getRecentCachedEvents: mocks.getRecentCachedEvents,
   getLatestCachedEvent: mocks.getLatestCachedEvent,
   putEvents: mocks.putEvents,
 }));
@@ -112,6 +115,59 @@ describe("fetchManifest", () => {
 
     await expect(fetchManifest("pubkey1")).resolves.toEqual(ev);
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("falls back to legacy manifests when allowed", async () => {
+    const legacy = mockEvent(15128, JSON.stringify({ files: [] }), [], "pubkey1");
+    request
+      .mockReturnValueOnce({
+        subscribe: (observer: {
+          complete?: () => void;
+        }) => {
+          observer.complete?.();
+          return { unsubscribe() {} };
+        },
+      })
+      .mockReturnValueOnce({
+        subscribe: (observer: {
+          next?: (event: unknown) => void;
+          complete?: () => void;
+        }) => {
+          observer.next?.(legacy);
+          observer.complete?.();
+          return { unsubscribe() {} };
+        },
+      });
+
+    await expect(fetchManifest("pubkey1", { allowLegacy: true })).resolves.toEqual(
+      legacy,
+    );
+  });
+
+  it("fetches a named manifest when a site name is provided", async () => {
+    const ev = mockEvent(
+      15128,
+      JSON.stringify({ files: [] }),
+      [
+        ["t", "aura-site"],
+        ["name", "mysite"],
+      ],
+      "pubkey1",
+    );
+    request.mockReturnValueOnce({
+      subscribe: (observer: {
+        next?: (event: unknown) => void;
+        complete?: () => void;
+      }) => {
+        observer.next?.(ev);
+        observer.complete?.();
+        return { unsubscribe() {} };
+      },
+    });
+
+    await expect(
+      fetchManifest("pubkey1", { siteName: "mysite", allowLegacy: true }),
+    ).resolves.toEqual(ev);
   });
 });
 

@@ -22,12 +22,13 @@ export interface SearchHit {
   npub: string;
   createdAt: number;
   resultKind: SearchHitKind;
+  siteName?: string | null;
   path?: string;
 }
 
 function getHitDedupeKey(hit: SearchHit): string {
   if (hit.resultKind === "site" || hit.resultKind === "user") {
-    return `${hit.resultKind}:${hit.pubkey}`;
+    return `${hit.resultKind}:${hit.pubkey}:${hit.siteName ?? ""}`;
   }
 
   return `${hit.resultKind}:${hit.id}`;
@@ -186,6 +187,7 @@ function toHit(event: NostrEvent): SearchHit {
         npub,
         createdAt: event.created_at,
         resultKind: "other",
+        siteName: null,
       };
     }
     const manifest = parseManifestMetadata(event);
@@ -209,6 +211,7 @@ function toHit(event: NostrEvent): SearchHit {
       npub,
       createdAt: event.created_at,
       resultKind: "site",
+      siteName: manifest.name ?? null,
       path: manifest.startPath,
     };
   }
@@ -259,6 +262,7 @@ function toHit(event: NostrEvent): SearchHit {
         npub,
         createdAt: event.created_at,
         resultKind: "user",
+        siteName: null,
       };
     } catch {
       return {
@@ -271,6 +275,7 @@ function toHit(event: NostrEvent): SearchHit {
         npub,
         createdAt: event.created_at,
         resultKind: "user",
+        siteName: null,
       };
     }
   }
@@ -289,6 +294,7 @@ function toHit(event: NostrEvent): SearchHit {
       npub,
       createdAt: event.created_at,
       resultKind: "note",
+      siteName: null,
     };
   }
 
@@ -305,6 +311,7 @@ function toHit(event: NostrEvent): SearchHit {
     npub,
     createdAt: event.created_at,
     resultKind: "other",
+    siteName: null,
   };
 }
 
@@ -328,6 +335,7 @@ function toHitFromCachedDocument(document: {
   pubkey: string;
   createdAt: number;
   resultKind: SearchHitKind;
+  siteName?: string | null;
   path?: string;
 }): SearchHit {
   return {
@@ -340,6 +348,7 @@ function toHitFromCachedDocument(document: {
     npub: nip19.npubEncode(document.pubkey),
     createdAt: document.createdAt,
     resultKind: document.resultKind,
+    siteName: document.siteName ?? null,
     path: document.path,
   };
 }

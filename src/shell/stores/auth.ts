@@ -15,6 +15,7 @@ import {
 } from "../../nostr/pool";
 import { fetchFollowingList, fetchRelayList } from "../../nostr/queries";
 import { startEventSync, stopEventSync } from "../../nostr/sync";
+import { getSettingsState } from "./settings";
 
 export interface AuthState {
   pubkey: string | null;
@@ -113,12 +114,25 @@ function createMuteListEvent(targetPubkey: string): EventTemplate {
   };
 }
 
+function syncRelaySubscription(
+  pubkey: string,
+  following: string[] = state.following,
+): void {
+  const relayUrls = getPoolRelayUrls();
+  const relays = relayUrls.length > 0 ? relayUrls : DEFAULT_RELAYS;
+  startEventSync(relays, {
+    pubkey,
+    following,
+    mode: getSettingsState().relaySubscriptionMode,
+  });
+}
+
 export async function primeRelayPool(pubkey: string): Promise<string[]> {
   createPool(DEFAULT_RELAYS);
   const userRelays = await fetchRelayList(pubkey);
   const relays = mergeRelayUrls(DEFAULT_RELAYS, userRelays);
   createPool(relays);
-  startEventSync(relays);
+  syncRelaySubscription(pubkey);
   return relays;
 }
 
@@ -133,6 +147,7 @@ export async function loginNip07(): Promise<string> {
   await primeRelayPool(pubkey);
   const following = await loadFollowing(pubkey);
   state = { pubkey, signer, following };
+  syncRelaySubscription(pubkey, following);
   return pubkey;
 }
 
@@ -153,6 +168,7 @@ export async function loginNip46(connectionString: string): Promise<string> {
   await primeRelayPool(pubkey);
   const following = await loadFollowing(pubkey);
   state = { pubkey, signer, following };
+  syncRelaySubscription(pubkey, following);
   return pubkey;
 }
 
@@ -169,6 +185,7 @@ export async function loginNsec(secretKeyInput: string): Promise<string> {
   await primeRelayPool(pubkey);
   const following = await loadFollowing(pubkey);
   state = { pubkey, signer, following };
+  syncRelaySubscription(pubkey, following);
   return pubkey;
 }
 
@@ -183,6 +200,11 @@ export async function publishMuteListEntry(
 
   await pool.publish(relays, signed);
   await putEvents([signed]);
+}
+
+export function refreshRelaySubscription(): void {
+  if (!state.pubkey) return;
+  syncRelaySubscription(state.pubkey);
 }
 
 export function logout(): void {

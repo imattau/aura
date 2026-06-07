@@ -30,6 +30,7 @@ export type CachedSearchResult = {
   pubkey: string;
   createdAt: number;
   resultKind: "site" | "article" | "note" | "user" | "other";
+  siteName?: string | null;
   path?: string;
   content: string;
   sig: string;
@@ -147,6 +148,7 @@ function createSearchIndex(): MiniSearch<SearchDocument> {
       "pubkey",
       "createdAt",
       "resultKind",
+      "siteName",
       "path",
       "content",
       "sig",
@@ -233,6 +235,29 @@ function createSchema(db: SqlJsDatabase): void {
       hash TEXT NOT NULL,
       PRIMARY KEY (pubkey, path)
     );
+
+    CREATE TABLE IF NOT EXISTS manifest_sites (
+      pubkey TEXT NOT NULL,
+      site_name TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      name TEXT,
+      description TEXT,
+      icon TEXT,
+      version TEXT,
+      start_path TEXT NOT NULL,
+      theme_color TEXT,
+      files_json TEXT NOT NULL,
+      PRIMARY KEY (pubkey, site_name)
+    );
+
+    CREATE TABLE IF NOT EXISTS manifest_site_files (
+      pubkey TEXT NOT NULL,
+      site_name TEXT NOT NULL,
+      path TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      PRIMARY KEY (pubkey, site_name, path)
+    );
   `);
 }
 
@@ -271,17 +296,26 @@ function runStatement(
   }
 }
 
-function insertManifestFiles(
+function insertManifestSiteFiles(
   db: SqlJsDatabase,
   pubkey: string,
+  siteName: string,
   files: Record<string, string>,
 ): void {
-  runStatement(db, "DELETE FROM manifest_files WHERE pubkey = ?", [pubkey]);
+  runStatement(
+    db,
+    "DELETE FROM manifest_site_files WHERE pubkey = ? AND site_name = ?",
+    [pubkey, siteName],
+  );
   for (const [path, hash] of Object.entries(files)) {
     runStatement(
       db,
-      "INSERT OR REPLACE INTO manifest_files (pubkey, path, hash) VALUES (?, ?, ?)",
-      [pubkey, path, hash],
+      `
+        INSERT OR REPLACE INTO manifest_site_files (
+          pubkey, site_name, path, hash
+        ) VALUES (?, ?, ?, ?)
+      `,
+      [pubkey, siteName, path, hash],
     );
   }
 }
@@ -393,8 +427,10 @@ function upsertDerivedTables(db: SqlJsDatabase, event: NostrEvent): void {
   }
 
   if (event.kind === 15128) {
-    if (!isAuraManifestEvent(event)) return;
     const manifest = parseManifestMetadata(event);
+    const siteName = manifest.name?.trim() ?? "";
+    if (!siteName) return;
+    if (!isAuraManifestEvent(event)) return;
     runStatement(
       db,
       `
@@ -407,7 +443,7 @@ function upsertDerivedTables(db: SqlJsDatabase, event: NostrEvent): void {
         event.pubkey,
         event.id,
         event.created_at,
-        manifest.name,
+        siteName,
         manifest.description,
         manifest.icon,
         manifest.version,
@@ -416,7 +452,29 @@ function upsertDerivedTables(db: SqlJsDatabase, event: NostrEvent): void {
         JSON.stringify(manifest.files),
       ],
     );
-    insertManifestFiles(db, event.pubkey, manifest.files);
+    runStatement(
+      db,
+      `
+        INSERT OR REPLACE INTO manifest_sites (
+          pubkey, site_name, event_id, created_at, name, description, icon,
+          version, start_path, theme_color, files_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        event.pubkey,
+        siteName,
+        event.id,
+        event.created_at,
+        siteName,
+        manifest.description,
+        manifest.icon,
+        manifest.version,
+        manifest.startPath,
+        manifest.themeColor,
+        JSON.stringify(manifest.files),
+      ],
+    );
+    insertManifestSiteFiles(db, event.pubkey, siteName, manifest.files);
   }
 }
 
@@ -591,6 +649,7 @@ function makeSearchDocumentFromEvent(
     summary: string;
     kindLabel: string;
     resultKind: SearchDocument["resultKind"];
+    siteName?: string | null;
     path?: string;
     metadata: string;
   },
@@ -604,6 +663,7 @@ function makeSearchDocumentFromEvent(
     pubkey: event.pubkey,
     createdAt: event.created_at,
     resultKind: data.resultKind,
+    siteName: data.siteName ?? null,
     path: data.path,
     content: event.content,
     sig: event.sig,
@@ -737,15 +797,17 @@ async function loadSearchDocuments(
         e.content AS content,
         e.sig AS sig,
         e.tags_json AS tags_json,
-        COALESCE(m.name, '') AS manifest_name,
-        COALESCE(m.description, '') AS manifest_description,
-        COALESCE(m.icon, '') AS manifest_icon,
-        COALESCE(m.version, '') AS manifest_version,
-        COALESCE(m.start_path, '') AS manifest_start_path,
-        COALESCE(m.theme_color, '') AS manifest_theme_color,
-        COALESCE(m.files_json, '') AS manifest_files_json
+        COALESCE(ms.name, m.name, '') AS manifest_name,
+        COALESCE(ms.description, m.description, '') AS manifest_description,
+        COALESCE(ms.icon, m.icon, '') AS manifest_icon,
+        COALESCE(ms.version, m.version, '') AS manifest_version,
+        COALESCE(ms.start_path, m.start_path, '') AS manifest_start_path,
+        COALESCE(ms.theme_color, m.theme_color, '') AS manifest_theme_color,
+        COALESCE(ms.files_json, m.files_json, '') AS manifest_files_json,
+        COALESCE(ms.site_name, '') AS manifest_site_name
       FROM events e
-      JOIN manifests m ON m.event_id = e.id
+      JOIN manifest_sites ms ON ms.event_id = e.id
+      LEFT JOIN manifests m ON m.event_id = e.id
       ORDER BY e.created_at DESC
     `,
   ) as Array<
@@ -757,6 +819,7 @@ async function loadSearchDocuments(
       manifest_start_path: string;
       manifest_theme_color: string;
       manifest_files_json: string;
+      manifest_site_name: string;
     }
   >;
 
@@ -770,8 +833,9 @@ async function loadSearchDocuments(
       sig: row.sig,
       tags: JSON.parse(row.tags_json) as NostrEvent["tags"],
     };
+    const siteName = row.manifest_site_name.trim();
     const document = makeSearchDocumentFromEvent(event, {
-      id: `site:${event.pubkey}`,
+      id: `site:${event.pubkey}:${siteName}`,
       title:
         row.manifest_name ||
         row.manifest_description ||
@@ -784,6 +848,7 @@ async function loadSearchDocuments(
       kindLabel: "Aura site",
       resultKind: "site",
       path: row.manifest_start_path || "/",
+      siteName: siteName || null,
       metadata: createSearchText([
         row.manifest_name,
         row.manifest_description,
@@ -961,6 +1026,26 @@ export async function getRecentCachedEvents(options: {
   return rowsToEvents(rows);
 }
 
+export async function getCachedEventById(
+  id: string,
+): Promise<NostrEvent | null> {
+  const db = await ensureDatabase();
+  if (!db) return null;
+
+  const rows = queryRows(
+    db,
+    `
+      SELECT ${RAW_EVENT_COLUMNS}
+      FROM events
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [id],
+  );
+
+  return rowsToEvents(rows)[0] ?? null;
+}
+
 export async function searchCachedDocuments(
   query: string,
   limit = 64,
@@ -984,6 +1069,7 @@ export async function searchCachedDocuments(
     pubkey: result.pubkey,
     createdAt: result.createdAt,
     resultKind: result.resultKind,
+    siteName: result.siteName,
     path: result.path,
     content: result.content,
     sig: result.sig,

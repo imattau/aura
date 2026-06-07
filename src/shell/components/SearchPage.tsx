@@ -1,3 +1,4 @@
+import { nip19 } from "nostr-tools";
 import { useEffect, useState } from "preact/hooks";
 import { getPoolRelayUrls } from "../../nostr/pool";
 import { fetchFollowingList } from "../../nostr/queries";
@@ -9,7 +10,8 @@ import { Icon } from "./Icon";
 interface Props {
   query: string;
   currentPubkey: string | null;
-  onOpenSite: (npub: string, path: string) => void;
+  onOpenSite: (npub: string, path: string, siteName?: string | null) => void;
+  onOpenNostr: (uri: string) => void;
   onBlockPubkey: (pubkey: string) => Promise<void>;
 }
 
@@ -19,6 +21,7 @@ export function SearchPage({
   query,
   currentPubkey,
   onOpenSite,
+  onOpenNostr,
   onBlockPubkey,
 }: Props) {
   const [results, setResults] = useState<SearchHit[]>([]);
@@ -149,6 +152,22 @@ export function SearchPage({
     }
   }
 
+  function buildNativeUri(result: SearchHit): string {
+    if (result.resultKind === "site" || result.resultKind === "user") {
+      return `nostr:${nip19.nprofileEncode({ pubkey: result.pubkey })}`;
+    }
+
+    if (result.resultKind === "note") {
+      return `nostr:${nip19.noteEncode(result.id)}`;
+    }
+
+    return `nostr:${nip19.neventEncode({
+      id: result.id,
+      author: result.pubkey,
+      kind: result.kind,
+    })}`;
+  }
+
   function renderResult(result: SearchHit) {
     return (
       <li class={`search-result search-result--${result.resultKind}`}>
@@ -159,21 +178,33 @@ export function SearchPage({
             <span class="search-result-kind-code">kind {result.kind}</span>
           </div>
           <div class="search-result-actions">
-            {result.resultKind === "site" || result.resultKind === "user" ? (
+            {result.resultKind === "site" ? (
               <button
                 type="button"
                 class="search-result-action search-result-action--open"
-                onClick={() => onOpenSite(result.npub, result.path ?? "/")}
+                onClick={() =>
+                  onOpenSite(result.npub, result.path ?? "/", result.siteName)
+                }
+                aria-label="Open site"
+                title="Open site"
+              >
+                <Icon name="go" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                class="search-result-action search-result-action--open"
+                onClick={() => onOpenNostr(buildNativeUri(result))}
                 aria-label={
-                  result.resultKind === "user" ? "Open profile" : "Open site"
+                  result.resultKind === "user" ? "Open profile" : "Open event"
                 }
                 title={
-                  result.resultKind === "user" ? "Open profile" : "Open site"
+                  result.resultKind === "user" ? "Open profile" : "Open event"
                 }
               >
                 <Icon name="go" />
               </button>
-            ) : null}
+            )}
             <button
               type="button"
               class="search-result-action"
@@ -195,16 +226,24 @@ export function SearchPage({
           </div>
         </div>
         <div class="search-result-body">
-          {result.resultKind === "site" || result.resultKind === "user" ? (
+          {result.resultKind === "site" ? (
             <button
               type="button"
               class="search-result-link"
-              onClick={() => onOpenSite(result.npub, result.path ?? "/")}
+              onClick={() =>
+                onOpenSite(result.npub, result.path ?? "/", result.siteName)
+              }
             >
               {result.title}
             </button>
           ) : (
-            <span class="search-result-title">{result.title}</span>
+            <button
+              type="button"
+              class="search-result-link"
+              onClick={() => onOpenNostr(buildNativeUri(result))}
+            >
+              {result.title}
+            </button>
           )}
           <p class="search-result-snippet">{result.summary}</p>
         </div>
@@ -212,7 +251,11 @@ export function SearchPage({
           <span class="search-result-type">
             {result.resultKind === "user" ? "Profile" : result.kindLabel}
           </span>
-          <span class="search-result-route">{result.path ?? "Result"}</span>
+          <span class="search-result-route">
+            {result.resultKind === "site" && result.siteName
+              ? `${result.siteName}${result.path ?? ""}`
+              : result.path ?? "Result"}
+          </span>
         </div>
       </li>
     );

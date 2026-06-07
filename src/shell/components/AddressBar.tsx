@@ -1,13 +1,19 @@
 import { useState } from "preact/hooks";
-import { resolveNpub } from "../stores/petnames";
+import { parseNativeNostrReference } from "../../nostr/native";
+import { parseAuraAddress } from "../addressing";
 import { Icon } from "./Icon";
 
 interface Props {
   currentNpub: string | null;
   currentPetname: string | null;
   currentSearchQuery: string | null;
-  onNavigate: (npub: string, path: string) => void;
+  onNavigate: (
+    npub: string,
+    path: string,
+    siteName?: string | null,
+  ) => void;
   onSearch: (query: string) => void;
+  onOpenNostr: (uri: string) => void;
 }
 
 export function AddressBar({
@@ -16,6 +22,7 @@ export function AddressBar({
   currentSearchQuery,
   onNavigate,
   onSearch,
+  onOpenNostr,
 }: Props) {
   const [input, setInput] = useState("");
 
@@ -24,22 +31,24 @@ export function AddressBar({
     const trimmed = input.trim();
     if (!trimmed) return;
 
-    let npub: string;
-    if (trimmed.startsWith("npub1")) {
-      npub = trimmed;
-    } else {
-      const resolved = resolveNpub(trimmed);
-      if (resolved) {
-        npub = resolved;
-      } else {
+    const auraAddress = parseAuraAddress(trimmed);
+    if (auraAddress) {
+      setInput("");
+      onNavigate(auraAddress.npub, auraAddress.path, auraAddress.siteName);
+      return;
+    }
+
+    if (trimmed.startsWith("nostr:")) {
+      const nativeReference = parseNativeNostrReference(trimmed);
+      if (nativeReference) {
         setInput("");
-        onSearch(trimmed);
+        onOpenNostr(trimmed);
         return;
       }
     }
 
     setInput("");
-    onNavigate(npub, "/");
+    onSearch(trimmed);
   }
 
   const displayLabel =
@@ -50,7 +59,7 @@ export function AddressBar({
       {displayLabel && <span class="current-site">{displayLabel}</span>}
       <input
         type="text"
-        placeholder="npub1..., site name, or search"
+        placeholder="~npub/site-name/index.html or search"
         value={input}
         onInput={(event) => setInput((event.target as HTMLInputElement).value)}
       />
